@@ -1,0 +1,17 @@
+ROLE_ADMIN = "admin"
+ROLE_USER = "user"
+
+AUTH_PROVIDER_LOCAL = "local"
+AUTH_PROVIDER_GOOGLE = "google"
+
+TRANSACTION_TYPE_INCOME = "income"
+TRANSACTION_TYPE_EXPENSE = "expense"
+
+TARGET_TYPE_USER = "user"
+TARGET_TYPE_CATEGORY = "category"
+TARGET_TYPE_ACCOUNT = "account"
+TARGET_TYPE_TRANSACTION = "transaction"
+TARGET_TYPE_AUTH = "auth"
+
+WEEK_START_MONDAY = "monday"
+WEEK_START_SUNDAY = "sunday"
