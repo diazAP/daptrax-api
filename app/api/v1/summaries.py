@@ -12,9 +12,14 @@ from app.core.deps import get_current_user
 from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.models.transfer import Transfer
 from app.models.user import User
 from app.schemas.summary import (
     AccountAmountItem,
+    AccountBalanceItem,
+    AccountBalancePeriodItem,
+    AccountBalancePeriodResponse,
+    AccountBalanceSummaryResponse,
     CalendarDayItem,
     CalendarSummaryResponse,
     CategoryAmountItem,
@@ -461,3 +466,282 @@ def get_chart_summary(
     ]
 
     return ChartSummaryResponse(range_type=range_type, series=series)
+
+
+def _get_account_balances_as_of(
+    db: Session,
+    user_id: UUID,
+    as_of_date: date,
+):
+    accounts = db.execute(
+        select(Account)
+        .where(Account.user_id == user_id)
+        .order_by(Account.sort_order.asc(), Account.name.asc())
+    ).scalars().all()
+
+    income_case = case(
+        (Transaction.transaction_type == TRANSACTION_TYPE_INCOME, Transaction.amount),
+        else_=0,
+    )
+    expense_case = case(
+        (Transaction.transaction_type == TRANSACTION_TYPE_EXPENSE, Transaction.amount),
+        else_=0,
+    )
+
+    tx_rows = db.execute(
+        select(
+            Transaction.account_id.label("account_id"),
+            func.coalesce(func.sum(income_case), 0).label("income_total"),
+            func.coalesce(func.sum(expense_case), 0).label("expense_total"),
+        )
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.transaction_date <= as_of_date)
+        .group_by(Transaction.account_id)
+    ).all()
+
+    transfer_in_rows = db.execute(
+        select(
+            Transfer.to_account_id.label("account_id"),
+            func.coalesce(func.sum(Transfer.amount), 0).label("transfer_in_total"),
+        )
+        .where(Transfer.user_id == user_id)
+        .where(Transfer.transfer_date <= as_of_date)
+        .group_by(Transfer.to_account_id)
+    ).all()
+
+    transfer_out_rows = db.execute(
+        select(
+            Transfer.from_account_id.label("account_id"),
+            func.coalesce(func.sum(Transfer.amount), 0).label("transfer_out_total"),
+        )
+        .where(Transfer.user_id == user_id)
+        .where(Transfer.transfer_date <= as_of_date)
+        .group_by(Transfer.from_account_id)
+    ).all()
+
+    tx_map: dict[UUID, dict[str, Decimal]] = {}
+    for row in tx_rows:
+        tx_map[row.account_id] = {
+            "income_total": Decimal(row.income_total or 0),
+            "expense_total": Decimal(row.expense_total or 0),
+        }
+
+    transfer_in_map: dict[UUID, Decimal] = {
+        row.account_id: Decimal(row.transfer_in_total or 0)
+        for row in transfer_in_rows
+    }
+
+    transfer_out_map: dict[UUID, Decimal] = {
+        row.account_id: Decimal(row.transfer_out_total or 0)
+        for row in transfer_out_rows
+    }
+
+    items: list[AccountBalanceItem] = []
+    total_current_balance = Decimal(0)
+
+    for account in accounts:
+        # Jika suatu saat account dibuat setelah as_of_date, snapshot sebelum tanggal itu dianggap 0
+        if account.created_at.date() > as_of_date:
+            continue
+
+        initial_balance = Decimal(account.initial_balance or 0)
+        income_total = tx_map.get(account.id, {}).get("income_total", Decimal(0))
+        expense_total = tx_map.get(account.id, {}).get("expense_total", Decimal(0))
+        transfer_in_total = transfer_in_map.get(account.id, Decimal(0))
+        transfer_out_total = transfer_out_map.get(account.id, Decimal(0))
+
+        current_balance = (
+            initial_balance
+            + income_total
+            - expense_total
+            + transfer_in_total
+            - transfer_out_total
+        )
+
+        total_current_balance += current_balance
+
+        items.append(
+            AccountBalanceItem(
+                account_id=account.id,
+                account_name=account.name,
+                initial_balance=initial_balance,
+                total_income=income_total,
+                total_expense=expense_total,
+                total_transfer_in=transfer_in_total,
+                total_transfer_out=transfer_out_total,
+                current_balance=current_balance,
+                color_key=account.color_key,
+                icon_key=account.icon_key,
+                sort_order=account.sort_order,
+            )
+        )
+
+    return items, total_current_balance
+
+
+def _get_account_period_movements(
+    db: Session,
+    user_id: UUID,
+    start_date: date,
+    end_date: date,
+):
+    accounts = db.execute(
+        select(Account)
+        .where(Account.user_id == user_id)
+        .order_by(Account.sort_order.asc(), Account.name.asc())
+    ).scalars().all()
+
+    income_case = case(
+        (Transaction.transaction_type == TRANSACTION_TYPE_INCOME, Transaction.amount),
+        else_=0,
+    )
+    expense_case = case(
+        (Transaction.transaction_type == TRANSACTION_TYPE_EXPENSE, Transaction.amount),
+        else_=0,
+    )
+
+    tx_rows = db.execute(
+        select(
+            Transaction.account_id.label("account_id"),
+            func.coalesce(func.sum(income_case), 0).label("income_total"),
+            func.coalesce(func.sum(expense_case), 0).label("expense_total"),
+        )
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.transaction_date >= start_date)
+        .where(Transaction.transaction_date <= end_date)
+        .group_by(Transaction.account_id)
+    ).all()
+
+    transfer_in_rows = db.execute(
+        select(
+            Transfer.to_account_id.label("account_id"),
+            func.coalesce(func.sum(Transfer.amount), 0).label("transfer_in_total"),
+        )
+        .where(Transfer.user_id == user_id)
+        .where(Transfer.transfer_date >= start_date)
+        .where(Transfer.transfer_date <= end_date)
+        .group_by(Transfer.to_account_id)
+    ).all()
+
+    transfer_out_rows = db.execute(
+        select(
+            Transfer.from_account_id.label("account_id"),
+            func.coalesce(func.sum(Transfer.amount), 0).label("transfer_out_total"),
+        )
+        .where(Transfer.user_id == user_id)
+        .where(Transfer.transfer_date >= start_date)
+        .where(Transfer.transfer_date <= end_date)
+        .group_by(Transfer.from_account_id)
+    ).all()
+
+    tx_map: dict[UUID, dict[str, Decimal]] = {}
+    for row in tx_rows:
+        tx_map[row.account_id] = {
+            "income_total": Decimal(row.income_total or 0),
+            "expense_total": Decimal(row.expense_total or 0),
+        }
+
+    transfer_in_map: dict[UUID, Decimal] = {
+        row.account_id: Decimal(row.transfer_in_total or 0)
+        for row in transfer_in_rows
+    }
+
+    transfer_out_map: dict[UUID, Decimal] = {
+        row.account_id: Decimal(row.transfer_out_total or 0)
+        for row in transfer_out_rows
+    }
+
+    opening_date = start_date - timedelta(days=1)
+
+    opening_items, total_opening_balance = _get_account_balances_as_of(
+        db, user_id, opening_date
+    )
+    closing_items, total_closing_balance = _get_account_balances_as_of(
+        db, user_id, end_date
+    )
+
+    opening_map = {item.account_id: item.current_balance for item in opening_items}
+    closing_map = {item.account_id: item.current_balance for item in closing_items}
+
+    items: list[AccountBalancePeriodItem] = []
+
+    for account in accounts:
+        # Account yang belum ada sampai end_date tidak ikut
+        if account.created_at.date() > end_date:
+            continue
+
+        opening_balance = opening_map.get(account.id, Decimal(0))
+        closing_balance = closing_map.get(account.id, Decimal(0))
+
+        income_total = tx_map.get(account.id, {}).get("income_total", Decimal(0))
+        expense_total = tx_map.get(account.id, {}).get("expense_total", Decimal(0))
+        transfer_in_total = transfer_in_map.get(account.id, Decimal(0))
+        transfer_out_total = transfer_out_map.get(account.id, Decimal(0))
+
+        net_change = closing_balance - opening_balance
+
+        items.append(
+            AccountBalancePeriodItem(
+                account_id=account.id,
+                account_name=account.name,
+                opening_balance=opening_balance,
+                income_total=income_total,
+                expense_total=expense_total,
+                transfer_in_total=transfer_in_total,
+                transfer_out_total=transfer_out_total,
+                net_change=net_change,
+                closing_balance=closing_balance,
+                color_key=account.color_key,
+                icon_key=account.icon_key,
+                sort_order=account.sort_order,
+            )
+        )
+
+    return items, total_opening_balance, total_closing_balance
+
+@router.get("/account-balances", response_model=AccountBalanceSummaryResponse)
+def get_account_balances_summary(
+    as_of_date: date = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    accounts, total_current_balance = _get_account_balances_as_of(
+        db,
+        current_user.id,
+        as_of_date,
+    )
+
+    return AccountBalanceSummaryResponse(
+        as_of_date=as_of_date,
+        total_current_balance=total_current_balance,
+        accounts=accounts,
+    )
+
+
+@router.get("/account-balances/period", response_model=AccountBalancePeriodResponse)
+def get_account_balances_period_summary(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="end_date must be greater than or equal to start_date",
+        )
+
+    items, total_opening_balance, total_closing_balance = _get_account_period_movements(
+        db,
+        current_user.id,
+        start_date,
+        end_date,
+    )
+
+    return AccountBalancePeriodResponse(
+        start_date=start_date,
+        end_date=end_date,
+        total_opening_balance=total_opening_balance,
+        total_closing_balance=total_closing_balance,
+        accounts=items,
+    )

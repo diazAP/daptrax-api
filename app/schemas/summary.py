@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from pydantic import BaseModel
-
+from uuid import UUID
 
 class SummaryTotals(BaseModel):
     income_total: Decimal
@@ -97,3 +97,45 @@ class ChartSeriesItem(BaseModel):
 class ChartSummaryResponse(BaseModel):
     range_type: str
     series: list[ChartSeriesItem]
+
+class AccountBalanceItem(BaseModel):
+    account_id: UUID
+    account_name: str
+    initial_balance: Decimal
+    total_income: Decimal
+    total_expense: Decimal
+    total_transfer_in: Decimal
+    total_transfer_out: Decimal
+    current_balance: Decimal
+    color_key: str | None = None
+    icon_key: str | None = None
+    sort_order: int
+
+
+class AccountBalanceSummaryResponse(BaseModel):
+    as_of_date: date
+    total_current_balance: Decimal
+    accounts: list[AccountBalanceItem]
+
+
+class AccountBalancePeriodItem(BaseModel):
+    account_id: UUID
+    account_name: str
+    opening_balance: Decimal
+    income_total: Decimal
+    expense_total: Decimal
+    transfer_in_total: Decimal
+    transfer_out_total: Decimal
+    net_change: Decimal
+    closing_balance: Decimal
+    color_key: str | None = None
+    icon_key: str | None = None
+    sort_order: int
+
+
+class AccountBalancePeriodResponse(BaseModel):
+    start_date: date
+    end_date: date
+    total_opening_balance: Decimal
+    total_closing_balance: Decimal
+    accounts: list[AccountBalancePeriodItem]
