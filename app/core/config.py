@@ -11,6 +11,9 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:5173"
 
+    session_cookie_name: str = "daptrax_session"
+    session_days: int = 7
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
