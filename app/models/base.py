@@ -5,6 +5,7 @@ from app.models.user_setting import UserSetting
 from app.models.category import Category
 from app.models.account import Account
 from app.models.transaction import Transaction
+from app.models.transfer import Transfer
 from app.models.auth_session import AuthSession
 from app.models.audit_log import AuditLog
 
@@ -16,6 +17,7 @@ __all__ = [
     "Category",
     "Account",
     "Transaction",
+    "Transfer",
     "AuthSession",
     "AuditLog",
 ]

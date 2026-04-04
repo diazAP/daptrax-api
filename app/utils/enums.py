@@ -11,6 +11,7 @@ TARGET_TYPE_USER = "user"
 TARGET_TYPE_CATEGORY = "category"
 TARGET_TYPE_ACCOUNT = "account"
 TARGET_TYPE_TRANSACTION = "transaction"
+TARGET_TYPE_TRANSFER = "transfer"
 TARGET_TYPE_AUTH = "auth"
 
 WEEK_START_MONDAY = "monday"

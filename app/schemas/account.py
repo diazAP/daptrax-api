@@ -23,6 +23,11 @@ class AccountResponse(BaseModel):
     id: UUID
     name: str
     initial_balance: Decimal
+    total_income: Decimal
+    total_expense: Decimal
+    total_transfer_in: Decimal
+    total_transfer_out: Decimal
+    current_balance: Decimal
     color_key: str | None = None
     icon_key: str | None = None
     sort_order: int
