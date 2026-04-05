@@ -21,6 +21,9 @@ from app.utils.enums import (
     TRANSACTION_TYPE_INCOME,
 )
 
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_TRANSACTION
+
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
@@ -147,6 +150,19 @@ def create_transaction(
     )
 
     db.add(transaction)
+
+    write_audit_log(
+        db,
+        action="transaction_create",
+        target_type=TARGET_TYPE_TRANSACTION,
+        actor_user_id=current_user.id,
+        target_id=transaction.id,
+        meta_json={
+            "transaction_type": transaction.transaction_type,
+            "amount": str(transaction.amount),
+        },
+    )
+
     db.commit()
     db.refresh(transaction)
     return transaction
@@ -180,6 +196,19 @@ def update_transaction(
     transaction.note = payload.note.strip() if payload.note else None
 
     db.add(transaction)
+
+    write_audit_log(
+        db,
+        action="transaction_update",
+        target_type=TARGET_TYPE_TRANSACTION,
+        actor_user_id=current_user.id,
+        target_id=transaction.id,
+        meta_json={
+            "transaction_type": transaction.transaction_type,
+            "amount": str(transaction.amount),
+        },
+    )
+
     db.commit()
     db.refresh(transaction)
     return transaction
@@ -194,6 +223,19 @@ def delete_transaction(
     transaction = _get_user_transaction(db, current_user.id, transaction_id)
 
     db.delete(transaction)
+
+    write_audit_log(
+        db,
+        action="transaction_delete",
+        target_type=TARGET_TYPE_TRANSACTION,
+        actor_user_id=current_user.id,
+        target_id=transaction.id,
+        meta_json={
+            "transaction_type": transaction.transaction_type,
+            "amount": str(transaction.amount),
+        },
+    )
+
     db.commit()
 
     return MessageResponse(message="Transaction deleted successfully")

@@ -12,6 +12,9 @@ from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.transfer import TransferCreate, TransferResponse, TransferUpdate
 
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_TRANSFER
+
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
 
@@ -113,6 +116,20 @@ def create_transfer(
     )
 
     db.add(transfer)
+
+    write_audit_log(
+        db,
+        action="transfer_create",
+        target_type=TARGET_TYPE_TRANSFER,
+        actor_user_id=current_user.id,
+        target_id=transfer.id,
+        meta_json={
+            "amount": str(transfer.amount),
+            "from_account_id": str(transfer.from_account_id),
+            "to_account_id": str(transfer.to_account_id),
+        },
+    )
+
     db.commit()
     db.refresh(transfer)
     return transfer
@@ -135,6 +152,20 @@ def update_transfer(
     transfer.note = payload.note.strip() if payload.note else None
 
     db.add(transfer)
+
+    write_audit_log(
+        db,
+        action="transfer_update",
+        target_type=TARGET_TYPE_TRANSFER,
+        actor_user_id=current_user.id,
+        target_id=transfer.id,
+        meta_json={
+            "amount": str(transfer.amount),
+            "from_account_id": str(transfer.from_account_id),
+            "to_account_id": str(transfer.to_account_id),
+        },
+    )
+
     db.commit()
     db.refresh(transfer)
     return transfer
@@ -149,6 +180,20 @@ def delete_transfer(
     transfer = _get_user_transfer(db, current_user.id, transfer_id)
 
     db.delete(transfer)
+
+    write_audit_log(
+        db,
+        action="transfer_delete",
+        target_type=TARGET_TYPE_TRANSFER,
+        actor_user_id=current_user.id,
+        target_id=transfer.id,
+        meta_json={
+            "amount": str(transfer.amount),
+            "from_account_id": str(transfer.from_account_id),
+            "to_account_id": str(transfer.to_account_id),
+        },
+    )   
+
     db.commit()
 
     return MessageResponse(message="Transfer deleted successfully")

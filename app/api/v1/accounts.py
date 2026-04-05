@@ -15,6 +15,9 @@ from app.schemas.account import AccountCreate, AccountResponse, AccountUpdate
 from app.schemas.common import MessageResponse
 from app.utils.enums import TRANSACTION_TYPE_EXPENSE, TRANSACTION_TYPE_INCOME
 
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_ACCOUNT
+
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
@@ -202,6 +205,16 @@ def create_account(
     )
 
     db.add(account)
+
+    write_audit_log(
+        db,
+        action="account_create",
+        target_type=TARGET_TYPE_ACCOUNT,
+        actor_user_id=current_user.id,
+        target_id=account.id,
+        meta_json={"name": account.name},
+    )
+
     db.commit()
     db.refresh(account)
     return _to_account_response(account)
@@ -268,6 +281,16 @@ def update_account(
     account.sort_order = payload.sort_order
 
     db.add(account)
+
+    write_audit_log(
+        db,
+        action="account_update",
+        target_type=TARGET_TYPE_ACCOUNT,
+        actor_user_id=current_user.id,
+        target_id=account.id,
+        meta_json={"name": account.name},
+    )
+
     db.commit()
     db.refresh(account)
 
@@ -320,6 +343,16 @@ def delete_account(
         )
 
     db.delete(account)
+
+    write_audit_log(
+        db,
+        action="account_delete",
+        target_type=TARGET_TYPE_ACCOUNT,
+        actor_user_id=current_user.id,
+        target_id=account.id,
+        meta_json={"name": account.name},
+    )
+
     db.commit()
 
     return MessageResponse(message="Account deleted successfully")

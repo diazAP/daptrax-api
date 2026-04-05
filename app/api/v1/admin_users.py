@@ -10,8 +10,10 @@ from app.models.user import User
 from app.schemas.user import (
     AdminUserListResponse,
     AdminUserStatusUpdateRequest,
-    AdminUserUpdateRequest,
 )
+
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_USER
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
@@ -61,31 +63,6 @@ def get_user_detail(
     return _get_user_or_404(db, user_id)
 
 
-@router.put("/{user_id}", response_model=AdminUserListResponse)
-def update_user(
-    user_id: UUID,
-    payload: AdminUserUpdateRequest,
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(require_admin),
-):
-    user = _get_user_or_404(db, user_id)
-
-    # Admin tunggal tetap tidak boleh dinonaktifkan atau diubah sembarangan oleh endpoint ini.
-    if user.id == current_admin.id and payload.is_active is False:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Primary admin cannot be deactivated",
-        )
-
-    user.full_name = payload.full_name.strip()
-    user.is_active = payload.is_active
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
 @router.patch("/{user_id}/status", response_model=AdminUserListResponse)
 def update_user_status(
     user_id: UUID,
@@ -104,6 +81,16 @@ def update_user_status(
     user.is_active = payload.is_active
 
     db.add(user)
+
+    write_audit_log(
+        db,
+        action="user_status_update",
+        target_type=TARGET_TYPE_USER,
+        actor_user_id=current_admin.id,
+        target_id=user.id,
+        meta_json={"is_active": user.is_active},
+    )
+
     db.commit()
     db.refresh(user)
     return user

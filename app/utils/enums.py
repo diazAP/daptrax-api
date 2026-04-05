@@ -13,6 +13,7 @@ TARGET_TYPE_ACCOUNT = "account"
 TARGET_TYPE_TRANSACTION = "transaction"
 TARGET_TYPE_TRANSFER = "transfer"
 TARGET_TYPE_AUTH = "auth"
+TARGET_TYPE_BACKUP = "backup"
 
 WEEK_START_MONDAY = "monday"
 WEEK_START_SUNDAY = "sunday"

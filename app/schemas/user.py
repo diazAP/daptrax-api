@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class MeResponse(BaseModel):
@@ -31,12 +31,6 @@ class AdminUserListResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class AdminUserUpdateRequest(BaseModel):
-    full_name: str = Field(..., min_length=1, max_length=150)
-    is_active: bool
-
 
 class AdminUserStatusUpdateRequest(BaseModel):
     is_active: bool

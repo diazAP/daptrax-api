@@ -29,6 +29,9 @@ from app.utils.enums import AUTH_PROVIDER_GOOGLE, ROLE_USER
 
 from fastapi.responses import RedirectResponse
 
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_AUTH, TARGET_TYPE_USER
+
 def _seed_default_categories_and_accounts(db: Session, user_id):
     from app.models.category import Category
     from app.models.account import Account
@@ -89,12 +92,28 @@ def admin_login(
         or not user.password_hash
         or not user.is_active
     ):
+        write_audit_log(
+            db,
+            action="admin_login_failed",
+            target_type=TARGET_TYPE_AUTH,
+            actor_user_id=user.id if user else None,
+            meta_json={"login": payload.login},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid login credentials",
         )
 
     if not verify_password(payload.password, user.password_hash):
+        write_audit_log(
+            db,
+            action="admin_login_failed",
+            target_type=TARGET_TYPE_AUTH,
+            actor_user_id=user.id,
+            meta_json={"login": payload.login},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid login credentials",
@@ -114,6 +133,16 @@ def admin_login(
 
     db.add(auth_session)
     db.add(user)
+
+    write_audit_log(
+        db,
+        action="admin_login_success",
+        target_type=TARGET_TYPE_AUTH,
+        actor_user_id=user.id,
+        target_id=user.id,
+        meta_json={"login": payload.login},
+    )
+
     db.commit()
     db.refresh(user)
 
@@ -250,6 +279,16 @@ async def google_callback(
         expires_at=expires_at,
     )
     db.add(auth_session)
+
+    write_audit_log(
+        db,
+        action="google_login_success",
+        target_type=TARGET_TYPE_AUTH,
+        actor_user_id=user.id,
+        target_id=user.id,
+        meta_json={"email": google_email},
+    )
+
     db.commit()
 
     response = RedirectResponse(
@@ -279,8 +318,6 @@ def logout(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Ambil semua session aktif user saat logout dari session saat ini tidak dipetakan langsung,
-    # jadi pendekatan sederhana untuk sekarang: revoke session aktif user yang belum revoked dan belum expired.
     stmt = select(AuthSession).where(
         AuthSession.user_id == current_user.id,
         AuthSession.revoked_at.is_(None),
@@ -292,6 +329,14 @@ def logout(
     for session in sessions:
         session.revoked_at = now
         db.add(session)
+
+    write_audit_log(
+        db,
+        action="logout",
+        target_type=TARGET_TYPE_AUTH,
+        actor_user_id=current_user.id,
+        target_id=current_user.id,
+    )
 
     db.commit()
 

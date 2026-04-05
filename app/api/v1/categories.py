@@ -11,6 +11,8 @@ from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
 from app.schemas.common import MessageResponse
+from app.core.audit import write_audit_log
+from app.utils.enums import TARGET_TYPE_CATEGORY
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -57,6 +59,14 @@ def create_category(
     )
 
     db.add(category)
+    write_audit_log(
+        db,
+        action="category_create",
+        target_type=TARGET_TYPE_CATEGORY,
+        actor_user_id=current_user.id,
+        target_id=category.id,
+        meta_json={"name": category.name},
+    )
     db.commit()
     db.refresh(category)
     return category
@@ -102,6 +112,16 @@ def update_category(
     category.sort_order = payload.sort_order
 
     db.add(category)
+
+    write_audit_log(
+        db,
+        action="category_update",
+        target_type=TARGET_TYPE_CATEGORY,
+        actor_user_id=current_user.id,
+        target_id=category.id,
+        meta_json={"name": category.name},
+    )    
+
     db.commit()
     db.refresh(category)
     return category
@@ -138,6 +158,16 @@ def delete_category(
         )
 
     db.delete(category)
+
+    write_audit_log(
+        db,
+        action="category_delete",
+        target_type=TARGET_TYPE_CATEGORY,
+        actor_user_id=current_user.id,
+        target_id=category.id,
+        meta_json={"name": category.name},
+    )
+
     db.commit()
 
     return MessageResponse(message="Category deleted successfully")
